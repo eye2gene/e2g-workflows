@@ -44,7 +44,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync
       - run: uv run just test
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: coverage-${{ matrix.python-version }}
@@ -57,7 +57,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@main
       - run: uv run just build
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
