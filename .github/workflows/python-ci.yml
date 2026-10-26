@@ -17,12 +17,25 @@ on:
         type: string
         default: "certifi cookiecutter"
 
+# Every job runs `uv` under UV_LOCKED=1, which refuses a uv.lock whose quarantine exceptions
+# ([options.exclude-newer-package]) are not also in uv's configuration. The two steps after setup-uv fetch this
+# repository at the commit of this workflow, let uv accept the lock's own exceptions, and fail the job when one
+# of them is not in quarantine-exceptions.toml. See README.md, "Quarantine exceptions".
+
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@main
+      - name: Fetch quarantine-exceptions.toml
+        uses: actions/checkout@v7
+        with:
+          repository: eye2Gene/e2g-workflows
+          ref: ${{ github.job_workflow_sha }}
+          path: .e2g-workflows
+      - name: Allow the quarantine exceptions of uv.lock
+        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
       - run: uv sync
       - run: uv run just ci
 
@@ -32,6 +45,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@main
+      - name: Fetch quarantine-exceptions.toml
+        uses: actions/checkout@v7
+        with:
+          repository: eye2Gene/e2g-workflows
+          ref: ${{ github.job_workflow_sha }}
+          path: .e2g-workflows
+      - name: Allow the quarantine exceptions of uv.lock
+        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
       - run: uv sync
       - run: uv run just license-check
 
@@ -45,6 +66,14 @@ jobs:
       - uses: astral-sh/setup-uv@main
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Fetch quarantine-exceptions.toml
+        uses: actions/checkout@v7
+        with:
+          repository: eye2Gene/e2g-workflows
+          ref: ${{ github.job_workflow_sha }}
+          path: .e2g-workflows
+      - name: Allow the quarantine exceptions of uv.lock
+        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
       - run: uv sync
       - run: uv run just test
       - uses: actions/upload-artifact@v7
@@ -59,6 +88,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@main
+      - name: Fetch quarantine-exceptions.toml
+        uses: actions/checkout@v7
+        with:
+          repository: eye2Gene/e2g-workflows
+          ref: ${{ github.job_workflow_sha }}
+          path: .e2g-workflows
+      - name: Allow the quarantine exceptions of uv.lock
+        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
       - run: uv run just build
       - uses: actions/upload-artifact@v7
         with:

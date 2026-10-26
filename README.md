@@ -88,6 +88,17 @@ jobs:
       # ... your release steps
 ```
 
+## Quarantine exceptions
+
+Every Eye2Gene Python project locks its dependencies with a 7-day quarantine (`exclude-newer = "7 days"` in `pyproject.toml`): a PyPI release is ignored until it is 7 days old. When `uv audit` reports a vulnerability whose fix is younger than that, the fix is let in early for every project at once through [`quarantine-exceptions.toml`](quarantine-exceptions.toml), not in each project's `pyproject.toml`.
+
+- **Adding an entry:** in any project generated from [e2g-pypkg](https://github.com/eye2Gene/e2g-pypkg), run `just allow <package>` (or `just allow <package> <version>`). It takes the fix version from `uv audit`, computes the cutoff from the release's upload time on PyPI, opens a pull request here and prints its URL. Review and merge it, then run `just up` in the project. If this repository has auto-merge enabled and a ruleset requiring the `check` status (from `list-check.yml`), `just allow` arms auto-merge instead and the pull request merges itself once the check passes. Editing the file by hand is fine too, through a pull request.
+- **Taking an entry:** `just up` in any project writes the list's active entries to the user-level uv configuration (`~/.config/uv/uv.toml`) before locking, so a fix listed by one person reaches every project on its next `just up`.
+- **In CI:** `python-ci.yml` reads the exceptions uv recorded in the project's `uv.lock`, configures uv to accept them so `uv sync` under `UV_LOCKED=1` passes, and fails the job when one of them lets a package in, today, that this list does not allow. Active exceptions appear as notices on the run; expired ones, listed here or not, as warnings until the project's next `just up`, since by then they only pin their package.
+- **`[policy] no-quarantine`:** the packages Eye2Gene releases itself (`process-dcm`, `pyescan`, `pseudonymise-files`), never quarantined anywhere.
+
+An entry expires on its own, 7 days after its cutoff, when the 7-day rule admits the same releases. The next `just allow` prunes expired entries from the file; the pull requests and the git history are the record of what was let in early, by whom and for which advisory. A project that still sets `exclude-newer-package` in its own `pyproject.toml` should drop it, since the list replaces it; CI accepts such entries only while they match the list.
+
 ## Adding new workflows
 
 To add a workflow for another language or toolchain:
