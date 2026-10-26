@@ -23,7 +23,7 @@ A complete CI pipeline for Python projects using [uv](https://docs.astral.sh/uv/
 
 | Input | Type | Default | Description |
 |---|---|---|---|
-| `python-versions` | string | `'["3.12", "3.13"]'` | JSON array of Python versions to test |
+| `python-versions` | string | `'["3.12", "3.13", "3.14"]'` | JSON array of Python versions to test |
 | `license-check-ignore` | string | `"certifi cookiecutter"` | Space-separated packages to skip in licence check |
 
 **Requirements for calling repos:**
@@ -69,7 +69,7 @@ jobs:
   ci:
     uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
     with:
-      python-versions: '["3.12", "3.13", "3.14"]'
+      python-versions: '["3.11", "3.12", "3.13"]'
       license-check-ignore: "certifi requests"
 ```
 
