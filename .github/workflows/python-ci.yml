@@ -10,7 +10,7 @@ on:
         description: JSON array of Python versions to test against
         required: false
         type: string
-        default: '["3.12", "3.13"]'
+        default: '["3.12", "3.13", "3.14"]'
       license-check-ignore:
         description: Space-separated list of packages to ignore in license check
         required: false
