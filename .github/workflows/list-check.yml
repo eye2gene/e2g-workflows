@@ -1,0 +1,54 @@
+name: Check quarantine-exceptions.toml
+
+# Validates the shared quarantine list, so a ruleset on main that requires the `check` status can gate the pull
+# requests that `just allow` opens: it parses the list and runs the CI script against a uv.lock that uses every
+# entry, which must pass without an error annotation. It runs on every pull request, not only those touching the
+# list, because a required check that never reports leaves a pull request unmergeable.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Parse the list and run the CI script against a lock that uses every entry
+        run: |
+          python3 - <<'PY'
+          import io, sys, tomllib
+          from contextlib import redirect_stdout
+          from pathlib import Path
+
+          sys.path.insert(0, "scripts")
+          import uv_quarantine_ci as ci
+
+          text = Path("quarantine-exceptions.toml").read_text()
+          days, never, entries = ci.load_list(text)
+          raw = tomllib.loads(text).get("exception", [])
+          for entry in raw:
+              for field in ("package", "version", "cutoff"):
+                  assert entry.get(field), f"an [[exception]] lacks {field}: {entry}"
+          keys = [(ci.normalize(entry["package"]), str(entry["version"])) for entry in raw]
+          duplicates = sorted({key for key in keys if keys.count(key) > 1})
+          assert not duplicates, f"duplicate entries: {duplicates}"
+          latest = {}
+          for package, cutoff, _ in entries:
+              latest[package] = max(cutoff, latest.get(package, cutoff))
+          lines = ['version = 1', '[options]', f'exclude-newer-span = "P{days}D"', '[options.exclude-newer-package]']
+          lines += [f'{name} = false' for name in sorted(never)]
+          lines += [f'{package} = "{ci.format_timestamp(cutoff)}"' for package, cutoff in sorted(latest.items())]
+          Path("synthetic.lock").write_text("\n".join(lines) + "\n")
+
+          out = io.StringIO()
+          with redirect_stdout(out):
+              status = ci.main(["uv_quarantine_ci.py", "synthetic.lock", "quarantine-exceptions.toml"])
+          print(out.getvalue())
+          assert status == 0 and "::error" not in out.getvalue(), "the CI script rejects the list"
+          print(f"ok: {len(entries)} entries, {len(never)} packages never quarantined, {days}-day quarantine")
+          PY

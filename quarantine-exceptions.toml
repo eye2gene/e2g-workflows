@@ -1,0 +1,39 @@
+# Quarantine exceptions shared by every Eye2Gene Python project.
+#
+# Each project locks with `exclude-newer = "7 days"`, so a PyPI release is ignored until it is 7 days old. An entry
+# below lets ONE package in early: its releases uploaded up to `cutoff` resolve as usual. Add one from any project with
+# `just allow <package> [<version>]`, which opens a pull request here; by hand, only through a pull request.
+#
+# An entry expires `quarantine-days` after its cutoff, when the global rule admits the same releases: `just up` stops
+# applying it, CI only warns about a uv.lock that still carries it, and the next `just allow` prunes it from this file.
+# The pull requests and the git history are the record. CI (python-ci.yml) fails a uv.lock that lets a package in
+# early, today, without a matching entry here.
+
+[policy]
+quarantine-days = 7
+# Packages Eye2Gene builds and releases itself: nothing to wait for, so they are never quarantined.
+no-quarantine = ["process-dcm", "pyescan", "pseudonymise-files"]
+
+[[exception]]
+package = "setuptools"
+version = "84.1.0"
+cutoff = "2026-10-20T00:00:00Z"
+advisory = "GHSA-xmj3-9gf7-h52w"
+added = "2026-10-26"
+by = "alanwilter"
+
+[[exception]]
+package = "certifi"
+version = "2026.10.19"
+cutoff = "2026-10-21T00:00:00Z"
+advisory = "PYSEC-2026-4320, GHSA-6q48-6c7w-9gw2"
+added = "2026-10-26"
+by = "alanwilter"
+
+[[exception]]
+package = "virtualenv"
+version = "21.14.13"
+cutoff = "2026-10-23T00:00:00Z"
+advisory = "GHSA-cx6f-vjhg-g3cc"
+added = "2026-10-26"
+by = "alanwilter"
