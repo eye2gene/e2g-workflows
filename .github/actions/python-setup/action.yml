@@ -25,6 +25,12 @@ runs:
       with:
         python-version: ${{ inputs.python-version }}
 
+    # Every `uv` command of the job, from the sync below on, refuses a uv.lock that is not up to date instead of
+    # rewriting it: the committed lock is what CI tests. python-ci.yml sets the same for its own jobs.
+    - name: Enforce the committed uv.lock for the rest of the job
+      shell: bash
+      run: echo "UV_LOCKED=1" >> "$GITHUB_ENV"
+
     # The script and the list come with this action's checkout, at the ref it was called with: GITHUB_ACTION_PATH
     # is .github/actions/python-setup inside it
     - name: Allow the quarantine exceptions of uv.lock
@@ -37,5 +43,6 @@ runs:
       if: inputs.sync == 'true'
       shell: bash
       env:
+        UV_LOCKED: "1"
         SYNC_ARGS: ${{ inputs.sync-args }}
-      run: uv sync $SYNC_ARGS  # unquoted on purpose: several arguments
+      run: uv sync $SYNC_ARGS # unquoted on purpose: several arguments
