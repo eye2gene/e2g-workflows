@@ -127,10 +127,11 @@ jobs:
 with, in its `justfile`:
 
 ```just
-# What the test job of python-ci.yml runs once the project is installed (GH_TOKEN is set)
+# What the test job of python-ci.yml runs once the project is installed (GH_TOKEN is set). It runs locally too, so
+# it leaves what is already there alone: the AWS profile is appended only when missing
 ci-setup:
     just crystal-eye
-    mkdir -p ~/.aws && printf '[profile ucl]\nregion = eu-west-2\n' > ~/.aws/config
+    grep -qs '^\[profile ucl\]' ~/.aws/config || { mkdir -p ~/.aws && printf '\n[profile ucl]\nregion = eu-west-2\n' >> ~/.aws/config; }
 ```
 
 **Using in a release workflow** (run CI before releasing):
