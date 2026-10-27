@@ -131,7 +131,7 @@ with, in its `justfile`:
 # it leaves what is already there alone: the AWS profile is appended only when missing
 ci-setup:
     just crystal-eye
-    grep -qs '^\[profile ucl\]' ~/.aws/config || { mkdir -p ~/.aws && printf '\n[profile ucl]\nregion = eu-west-2\n' >> ~/.aws/config; }
+    grep -qs '^[[:space:]]*\[profile ucl\]' ~/.aws/config || { mkdir -p ~/.aws && printf '\n[profile ucl]\nregion = eu-west-2\n' >> ~/.aws/config; }
 ```
 
 **Using in a release workflow** (run CI before releasing):
