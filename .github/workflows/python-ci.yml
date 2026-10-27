@@ -72,7 +72,10 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .e2g-workflows
       - uses: ./.e2g-workflows/.github/actions/python-setup
-      - run: rm -rf .e2g-workflows
+      # Keep only .github, where the action's manifest is: the runner reads it again for the post-job steps (setup-uv's
+      # cache); the rest (scripts, the list, docs) would be linted and tested as part of the project
+      - name: Drop the e2g-workflows checkout, but the action's manifest
+        run: find .e2g-workflows -mindepth 1 -maxdepth 1 ! -name .github -exec rm -rf {} +
       - run: uv run just ci
 
   license-check:
@@ -90,7 +93,10 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .e2g-workflows
       - uses: ./.e2g-workflows/.github/actions/python-setup
-      - run: rm -rf .e2g-workflows
+      # Keep only .github, where the action's manifest is: the runner reads it again for the post-job steps (setup-uv's
+      # cache); the rest (scripts, the list, docs) would be linted and tested as part of the project
+      - name: Drop the e2g-workflows checkout, but the action's manifest
+        run: find .e2g-workflows -mindepth 1 -maxdepth 1 ! -name .github -exec rm -rf {} +
       - run: uv run just license-check
 
   test:
@@ -128,7 +134,10 @@ jobs:
       - uses: ./.e2g-workflows/.github/actions/python-setup
         with:
           python-version: ${{ matrix.python-version }}
-      - run: rm -rf .e2g-workflows
+      # Keep only .github, where the action's manifest is: the runner reads it again for the post-job steps (setup-uv's
+      # cache); the rest (scripts, the list, docs) would be linted and tested as part of the project
+      - name: Drop the e2g-workflows checkout, but the action's manifest
+        run: find .e2g-workflows -mindepth 1 -maxdepth 1 ! -name .github -exec rm -rf {} +
 
       - name: Install system packages
         if: inputs.apt-packages != ''
@@ -145,7 +154,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
-          if uv run just --summary | tr ' ' '\n' | grep -qx ci-setup; then
+          uv run just --summary > /dev/null  # a justfile that cannot be read fails the job here, not silently below
+          if uv run just --show ci-setup > /dev/null 2>&1; then  # --show sees aliases and [private] recipes too
             uv run just ci-setup
           else
             echo "No ci-setup recipe in the justfile: nothing to do"
@@ -178,13 +188,17 @@ jobs:
       - uses: ./.e2g-workflows/.github/actions/python-setup
         with:
           sync: "false"  # `uv run just build` installs what it needs
-      - run: rm -rf .e2g-workflows
+      # Keep only .github, where the action's manifest is: the runner reads it again for the post-job steps (setup-uv's
+      # cache); the rest (scripts, the list, docs) would be linted and tested as part of the project
+      - name: Drop the e2g-workflows checkout, but the action's manifest
+        run: find .e2g-workflows -mindepth 1 -maxdepth 1 ! -name .github -exec rm -rf {} +
       - run: uv run just build
 
       # The project's own check of what it built (a smoke test of the wheels), kept in its justfile
       - name: Project check (just ci-check, when the justfile defines it)
         run: |
-          if uv run just --summary | tr ' ' '\n' | grep -qx ci-check; then
+          uv run just --summary > /dev/null  # a justfile that cannot be read fails the job here, not silently below
+          if uv run just --show ci-check > /dev/null 2>&1; then  # --show sees aliases and [private] recipes too
             uv run just ci-check
           else
             echo "No ci-check recipe in the justfile: nothing to do"
