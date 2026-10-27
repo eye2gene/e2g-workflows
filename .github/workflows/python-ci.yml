@@ -3,6 +3,11 @@ name: Python CI (reusable)
 env:
   UV_LOCKED: "1"
 
+# The CI of every Eye2Gene Python project, called from its ci.yml and release.yml. A project adapts it through the
+# inputs and the secret below, through two optional justfile recipes (`ci-setup`, run in the test job once the
+# project is installed, and `ci-check`, run in the build job once it is built), and by adding jobs of its own next
+# to the call. Jobs cannot be overridden: a job a project must write itself starts with the same steps through
+# .github/actions/python-setup. See README.md, "Extending python-ci.yml".
 on:
   workflow_call:
     inputs:
@@ -16,27 +21,57 @@ on:
         required: false
         type: string
         default: "certifi cookiecutter"
+      submodules:
+        description: Check the submodules out, in every job ("false", "true" or "recursive"); a private one needs GH_TOKEN
+        required: false
+        type: string
+        default: "false"
+      lfs:
+        description: Pull the git-lfs objects in the test job, cached between runs to spare the LFS bandwidth quota
+        required: false
+        type: boolean
+        default: false
+      apt-packages:
+        description: Space-separated Debian packages to install in the test job, such as "ffmpeg"
+        required: false
+        type: string
+        default: ""
+      bun:
+        description: Install bun in the test job
+        required: false
+        type: boolean
+        default: false
+      test-recipe:
+        description: The justfile recipe the test job runs
+        required: false
+        type: string
+        default: "test"
+    secrets:
+      GH_TOKEN:
+        description: A token that can read the project's private submodules and other private repositories; also in the environment of `just ci-setup`
+        required: false
 
 # Every job runs `uv` under UV_LOCKED=1, which refuses a uv.lock whose quarantine exceptions
-# ([options.exclude-newer-package]) are not also in uv's configuration. The two steps after setup-uv fetch this
-# repository at the commit of this workflow, let uv accept the lock's own exceptions, and fail the job when one
-# of them is not in quarantine-exceptions.toml. See README.md, "Quarantine exceptions".
+# ([options.exclude-newer-package]) are not also in uv's configuration. Each job fetches this repository at the
+# commit of this workflow and runs its python-setup action, which lets uv accept the lock's own exceptions and fails
+# the job when one of them is not in quarantine-exceptions.toml. See README.md, "Quarantine exceptions".
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@main
-      - name: Fetch quarantine-exceptions.toml
+        with:
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
+      - name: Fetch e2g-workflows
         uses: actions/checkout@v7
         with:
           repository: eye2Gene/e2g-workflows
           ref: ${{ github.job_workflow_sha }}
           path: .e2g-workflows
-      - name: Allow the quarantine exceptions of uv.lock
-        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
-      - run: uv sync
+      - uses: ./.e2g-workflows/.github/actions/python-setup
+      - run: rm -rf .e2g-workflows
       - run: uv run just ci
 
   license-check:
@@ -44,16 +79,17 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@main
-      - name: Fetch quarantine-exceptions.toml
+        with:
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
+      - name: Fetch e2g-workflows
         uses: actions/checkout@v7
         with:
           repository: eye2Gene/e2g-workflows
           ref: ${{ github.job_workflow_sha }}
           path: .e2g-workflows
-      - name: Allow the quarantine exceptions of uv.lock
-        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
-      - run: uv sync
+      - uses: ./.e2g-workflows/.github/actions/python-setup
+      - run: rm -rf .e2g-workflows
       - run: uv run just license-check
 
   test:
@@ -63,19 +99,61 @@ jobs:
         python-version: ${{ fromJson(inputs.python-versions) }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@main
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Fetch quarantine-exceptions.toml
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
+
+      # The LFS objects, restored from the cache when their ids have not changed, so each run does not spend the
+      # LFS bandwidth quota; pulled after the checkout, which would otherwise download them before the restore
+      - name: List the git-lfs objects
+        if: inputs.lfs
+        run: git lfs ls-files --long | cut -d ' ' -f1 | sort > .lfs-assets-id
+      - name: Cache the git-lfs objects
+        if: inputs.lfs
+        uses: actions/cache@v6
+        with:
+          path: .git/lfs
+          key: lfs-${{ hashFiles('.lfs-assets-id') }}
+      - name: Pull the git-lfs objects
+        if: inputs.lfs
+        run: git lfs pull
+
+      - name: Fetch e2g-workflows
         uses: actions/checkout@v7
         with:
           repository: eye2Gene/e2g-workflows
           ref: ${{ github.job_workflow_sha }}
           path: .e2g-workflows
-      - name: Allow the quarantine exceptions of uv.lock
-        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
-      - run: uv sync
-      - run: uv run just test
+      - uses: ./.e2g-workflows/.github/actions/python-setup
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: rm -rf .e2g-workflows
+
+      - name: Install system packages
+        if: inputs.apt-packages != ''
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $APT_PACKAGES  # unquoted: several packages
+      - name: Install bun
+        if: inputs.bun
+        uses: oven-sh/setup-bun@v2
+
+      # The project's own setup for its tests (a downloaded binary, a stubbed AWS profile, a vendored tool), kept in
+      # its justfile, where it is documented and reproducible locally
+      - name: Project setup (just ci-setup, when the justfile defines it)
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          if uv run just --summary | tr ' ' '\n' | grep -qx ci-setup; then
+            uv run just ci-setup
+          else
+            echo "No ci-setup recipe in the justfile: nothing to do"
+          fi
+
+      - name: Test
+        env:
+          TEST_RECIPE: ${{ inputs.test-recipe }}
+        run: uv run just "$TEST_RECIPE"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -87,16 +165,30 @@ jobs:
     needs: [ci, test]
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@main
-      - name: Fetch quarantine-exceptions.toml
+        with:
+          submodules: ${{ inputs.submodules }}
+          token: ${{ secrets.GH_TOKEN || github.token }}
+      - name: Fetch e2g-workflows
         uses: actions/checkout@v7
         with:
           repository: eye2Gene/e2g-workflows
           ref: ${{ github.job_workflow_sha }}
           path: .e2g-workflows
-      - name: Allow the quarantine exceptions of uv.lock
-        run: python3 .e2g-workflows/scripts/uv_quarantine_ci.py uv.lock .e2g-workflows/quarantine-exceptions.toml && rm -rf .e2g-workflows
+      - uses: ./.e2g-workflows/.github/actions/python-setup
+        with:
+          sync: "false"  # `uv run just build` installs what it needs
+      - run: rm -rf .e2g-workflows
       - run: uv run just build
+
+      # The project's own check of what it built (a smoke test of the wheels), kept in its justfile
+      - name: Project check (just ci-check, when the justfile defines it)
+        run: |
+          if uv run just --summary | tr ' ' '\n' | grep -qx ci-check; then
+            uv run just ci-check
+          else
+            echo "No ci-check recipe in the justfile: nothing to do"
+          fi
+
       - uses: actions/upload-artifact@v7
         with:
           name: dist

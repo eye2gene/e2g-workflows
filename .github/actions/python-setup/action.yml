@@ -1,0 +1,41 @@
+name: Python project setup
+description: >-
+  The setup every job of python-ci.yml starts with, for a job a project writes itself: uv with the project's Python,
+  uv configured for the quarantine exceptions the project's uv.lock records (the job fails when one of them is not
+  in quarantine-exceptions.toml), then `uv sync`. Run it after actions/checkout.
+
+inputs:
+  python-version:
+    description: The Python version setup-uv installs; the project's .python-version when empty
+    required: false
+    default: ""
+  sync:
+    description: Run `uv sync` after configuring uv ("true" or "false")
+    required: false
+    default: "true"
+  sync-args:
+    description: Extra arguments for `uv sync`, such as "--all-extras"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@main
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    # The script and the list come with this action's checkout, at the ref it was called with: GITHUB_ACTION_PATH
+    # is .github/actions/python-setup inside it
+    - name: Allow the quarantine exceptions of uv.lock
+      shell: bash
+      run: >-
+        python3 "$GITHUB_ACTION_PATH/../../../scripts/uv_quarantine_ci.py"
+        uv.lock "$GITHUB_ACTION_PATH/../../../quarantine-exceptions.toml"
+
+    - name: uv sync
+      if: inputs.sync == 'true'
+      shell: bash
+      env:
+        SYNC_ARGS: ${{ inputs.sync-args }}
+      run: uv sync $SYNC_ARGS  # unquoted on purpose: several arguments
