@@ -90,7 +90,7 @@ The workflow is the base every project inherits, in the sense of a GitLab `inclu
 
 1. **Inputs** (above), for what the runner must provide: submodules, LFS objects, Debian packages, bun, another test recipe.
 2. **Two hook recipes in the project's `justfile`**, run when they exist: `ci-setup`, in the test job once the project is installed and before the tests (download a pinned binary, stub an AWS profile, build a vendored tool), and `ci-check`, in the build job after `just build` (smoke-test the wheels). They run through `uv run just`, with `GH_TOKEN` in the environment of `ci-setup`. Keeping them in the justfile means the same steps run locally, documented next to the other recipes.
-3. **Extra jobs in the calling workflow**, for checks this workflow has no business knowing about (a generated client that must be up to date, a container image). A job that needs the project installed starts with the [`python-setup` action](.github/actions/python-setup/action.yml), the same steps every job here starts with, so it needs no copy of them:
+3. **Extra jobs in the calling workflow**, for checks this workflow has no business knowing about (a generated client that must be up to date, a container image). A job that needs the project installed starts with the [`python-setup` action](.github/actions/python-setup/action.yml), the same steps every job here starts with, so it needs no copy of them. The action also sets `UV_LOCKED=1` for the rest of the job, as this workflow does for its own, so a stale `uv.lock` fails instead of being rewritten:
 
    ```yaml
    jobs:
