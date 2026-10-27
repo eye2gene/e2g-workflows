@@ -16,10 +16,9 @@ Usage: ``python3 uv_quarantine_ci.py <uv.lock> <quarantine-exceptions.toml>``. S
 import os
 import re
 import sys
+import tomllib
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-import tomllib
 
 LIST_REPO = "eye2Gene/e2g-workflows"
 TIMESTAMP = "%Y-%m-%dT%H:%M:%SZ"
@@ -44,7 +43,7 @@ def parse_timestamp(value: object, *, what: str) -> datetime:
         parsed = value
     elif isinstance(value, str):
         try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(value)
         except ValueError as exc:
             raise SystemExit(f"{what}: {value!r} is not an ISO 8601 timestamp") from exc
     else:
@@ -113,22 +112,54 @@ def user_config_path() -> Path:
     return Path(base) / "uv" / "uv.toml"
 
 
-def write_user_config(exceptions: dict[str, datetime | None]) -> Path:
-    """Put the lock's exceptions in the user-level uv configuration, so ``uv sync --locked`` accepts the lock as it is."""
+def user_exceptions(text: str) -> dict[str, datetime | None]:
+    """Return the exceptions of the managed block in a user-level uv configuration, empty when there is none."""
+    match = _BLOCK.search(text)
+    if match is None:
+        return {}
+    body = "\n".join(line for line in match.group(0).splitlines() if not line.startswith("#"))
+    try:
+        table = tomllib.loads(body).get("exclude-newer-package")
+    except tomllib.TOMLDecodeError:
+        return {}
+    if not isinstance(table, dict):
+        return {}
+    return {
+        normalize(name): None if value is False else parse_timestamp(value, what=f"uv.toml exclude-newer-package {name}")
+        for name, value in table.items()
+    }
+
+
+def write_user_config(exceptions: dict[str, datetime | None]) -> tuple[Path, list[str]]:
+    """Add the lock's exceptions to the user-level uv configuration, so ``uv sync --locked`` accepts the lock as it is.
+
+    A runner starts with no configuration, so the block is the lock's. Run on a developer's machine, the block
+    already holds the shared list, which the locks of the other projects rely on: its other entries stay, and a
+    package in both takes the later cutoff. Returns the path and the entries kept.
+    """
     path = user_config_path()
-    rest = _BLOCK.sub("", path.read_text() if path.exists() else "").lstrip("\n")
+    existing = path.read_text() if path.exists() else ""
+    merged = user_exceptions(existing)
+    kept = sorted(name for name in merged if name not in exceptions)
+    for name, cutoff in exceptions.items():
+        if name in merged:
+            current = merged[name]
+            merged[name] = None if current is None or cutoff is None else max(current, cutoff)
+        else:
+            merged[name] = cutoff
+    rest = _BLOCK.sub("", existing).lstrip("\n")
     items = ", ".join(
         f"{name} = false"
         if cutoff is None
         else f'{name} = "{format_timestamp(cutoff)}"'
-        for name, cutoff in sorted(exceptions.items())
+        for name, cutoff in sorted(merged.items())
     )
     block = f"{BLOCK_BEGIN}\nexclude-newer-package = {{ {items} }}\n{BLOCK_END}\n"
-    merged = f"{block}\n{rest}" if rest else block
-    tomllib.loads(merged)
+    text = f"{block}\n{rest}" if rest else block
+    tomllib.loads(text)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(merged)
-    return path
+    path.write_text(text)
+    return path, kept
 
 
 def main(argv: list[str]) -> int:
@@ -194,7 +225,11 @@ def main(argv: list[str]) -> int:
             "exclude-newer-package, remove it, the shared list replaces it, then run `just up`"
         )
         return 1
-    print(f"uv configured for these exceptions in {write_user_config(lock)}")
+    path, kept = write_user_config(lock)
+    print(
+        f"uv configured for these exceptions in {path}"
+        + (f"; kept, from the shared list or another project's lock: {', '.join(kept)}" if kept else "")
+    )
     return 0
 
 
