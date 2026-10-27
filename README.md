@@ -69,7 +69,7 @@ jobs:
   ci:
     uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
     with:
-      python-versions: '["3.11", "3.12", "3.13"]'
+      python-versions: '["3.11", "3.12", "3.13", "3.14"]'
       license-check-ignore: "certifi requests"
 ```
 
