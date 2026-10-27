@@ -16,8 +16,8 @@ A complete CI pipeline for Python projects using [uv](https://docs.astral.sh/uv/
 |---|---|
 | `ci` | Runs `just ci` — format check, lint, type-check, audit |
 | `license-check` | Runs `just license-check` — checks dependency licences (non-blocking) |
-| `test` | Runs `just test` across a Python version matrix |
-| `build` | Runs `just build` — builds the wheel and sdist |
+| `test` | Runs `just ci-setup` when the justfile defines it, then `just test` (or `test-recipe`), across a Python version matrix |
+| `build` | Runs `just build`, then `just ci-check` when the justfile defines it — builds the wheel and sdist |
 
 **Inputs:**
 
@@ -25,6 +25,17 @@ A complete CI pipeline for Python projects using [uv](https://docs.astral.sh/uv/
 |---|---|---|---|
 | `python-versions` | string | `'["3.12", "3.13", "3.14"]'` | JSON array of Python versions to test |
 | `license-check-ignore` | string | `"certifi cookiecutter"` | Space-separated packages to skip in licence check |
+| `submodules` | string | `"false"` | Check the submodules out in every job: `"true"` or `"recursive"`; a private one needs the `GH_TOKEN` secret |
+| `lfs` | boolean | `false` | Pull the git-lfs objects in the test job, cached between runs (the LFS bandwidth quota) |
+| `apt-packages` | string | `""` | Space-separated Debian packages to install in the test job, e.g. `"ffmpeg"` |
+| `bun` | boolean | `false` | Install [bun](https://bun.sh) in the test job |
+| `test-recipe` | string | `"test"` | The justfile recipe the test job runs, e.g. `"test-local"` for a suite whose AWS tests are deselected in CI |
+
+**Secrets:**
+
+| Secret | Description |
+|---|---|
+| `GH_TOKEN` | Optional. A token that can read the project's private submodules (the checkout uses it instead of `github.token`) and other private repositories; also in the environment of `just ci-setup`, e.g. for `gh release download`. Pass it with `secrets: inherit` or `secrets: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }`. |
 
 **Requirements for calling repos:**
 
@@ -73,6 +84,55 @@ jobs:
       license-check-ignore: "certifi requests"
 ```
 
+**Extending `python-ci.yml`:**
+
+The workflow is the base every project inherits, in the sense of a GitLab `include` + `extends`: one definition here, each project adding only its own needs in its own files. GitHub Actions lets a caller pass inputs and secrets and add jobs next to the call, but never override a job or insert a step into one, so a project adapts the workflow in these ways, in this order of preference:
+
+1. **Inputs** (above), for what the runner must provide: submodules, LFS objects, Debian packages, bun, another test recipe.
+2. **Two hook recipes in the project's `justfile`**, run when they exist: `ci-setup`, in the test job once the project is installed and before the tests (download a pinned binary, stub an AWS profile, build a vendored tool), and `ci-check`, in the build job after `just build` (smoke-test the wheels). They run through `uv run just`, with `GH_TOKEN` in the environment of `ci-setup`. Keeping them in the justfile means the same steps run locally, documented next to the other recipes.
+3. **Extra jobs in the calling workflow**, for checks this workflow has no business knowing about (a generated client that must be up to date, a container image). A job that needs the project installed starts with the [`python-setup` action](.github/actions/python-setup/action.yml), the same steps every job here starts with, so it needs no copy of them:
+
+   ```yaml
+   jobs:
+     ci:
+       uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+       secrets: inherit
+
+     my-check:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v7
+         - uses: eye2Gene/e2g-workflows/.github/actions/python-setup@main
+           with:
+             sync-args: --all-extras   # optional; `python-version` and `sync: "false"` too
+         - run: uv run just my-check
+   ```
+
+What is not an option is copying the four jobs into the project to change one of them: the copy stops receiving fixes made here (the quarantine step, for one) the day it is made. If a project needs something none of the above covers, add an input or a hook here first.
+
+A project whose tests need a private binary, system packages, LFS data and a reduced suite looks like this:
+
+```yaml
+jobs:
+  ci:
+    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+    with:
+      python-versions: '["3.11", "3.12", "3.13", "3.14"]'
+      lfs: true
+      apt-packages: ffmpeg
+      test-recipe: test-local
+    secrets: inherit
+```
+
+with, in its `justfile`:
+
+```just
+# What the test job of python-ci.yml runs once the project is installed (GH_TOKEN is set)
+ci-setup:
+    just crystal-eye
+    mkdir -p ~/.aws && printf '[profile ucl]\nregion = eu-west-2\n' > ~/.aws/config
+```
+
 **Using in a release workflow** (run CI before releasing):
 
 ```yaml
@@ -94,7 +154,7 @@ Every Eye2Gene Python project locks its dependencies with a 7-day quarantine (`e
 
 - **Adding an entry:** in any project generated from [e2g-pypkg](https://github.com/eye2Gene/e2g-pypkg), run `just allow <package>` (or `just allow <package> <version>`). It takes the fix version from `uv audit`, computes the cutoff from the release's upload time on PyPI, opens a pull request here and prints its URL. Review and merge it, then run `just up` in the project. If this repository has auto-merge enabled (Settings → General → Pull Requests), `just allow` merges the pull request automatically instead: at once, or, when a ruleset on `main` requires the `check` status from `list-check.yml`, as soon as that check passes. Editing the file by hand is fine too, through a pull request.
 - **Taking an entry:** `just up` in any project writes the list's active entries to the user-level uv configuration (`~/.config/uv/uv.toml`) before locking, so a fix listed by one person reaches every project on its next `just up`.
-- **In CI:** `python-ci.yml` reads the exceptions uv recorded in the project's `uv.lock`, configures uv to accept them so `uv sync` under `UV_LOCKED=1` passes, and fails the job when one of them lets a package in, today, that this list does not allow. Active exceptions appear as notices on the run; expired ones, listed here or not, as warnings until the project's next `just up`, since by then they only pin their package.
+- **In CI:** `python-ci.yml` (through its `python-setup` action, which a project's own jobs can use too) reads the exceptions uv recorded in the project's `uv.lock`, configures uv to accept them so `uv sync` under `UV_LOCKED=1` passes, and fails the job when one of them lets a package in, today, that this list does not allow. Active exceptions appear as notices on the run; expired ones, listed here or not, as warnings until the project's next `just up`, since by then they only pin their package.
 - **`[policy] no-quarantine`:** the packages Eye2Gene releases itself (`process-dcm`, `pyescan`, `pseudonymise-files`), never quarantined anywhere.
 
 An entry expires on its own, 7 days after its cutoff, when the 7-day rule admits the same releases. The next `just allow` prunes expired entries from the file; the pull requests and the git history are the record of what was let in early, by whom and for which advisory. A project that still sets `exclude-newer-package` in its own `pyproject.toml` should drop it, since the list replaces it; CI accepts such entries only while they match the list.
@@ -120,4 +180,4 @@ If a breaking change is ever required (e.g., a `justfile` recipe is renamed), it
 
 ## Access
 
-This is a **public** repository. The workflows themselves contain no secrets — authentication tokens are passed in from the calling repo's `secrets.GITHUB_TOKEN` at runtime.
+This is a **public** repository. The workflows themselves contain no secrets — authentication tokens are passed in from the calling repo at runtime: its `secrets.GITHUB_TOKEN`, and the organisation's `GH_TOKEN` when the caller passes it.
