@@ -34,6 +34,8 @@ jobs:
           for entry in raw:
               for field in ("package", "version", "cutoff"):
                   assert entry.get(field), f"an [[exception]] lacks {field}: {entry}"
+              advisory = entry.get("advisory")
+              assert isinstance(advisory, str) and advisory.strip(), f"an [[exception]] lacks an advisory: {entry}"
           keys = [(ci.normalize(entry["package"]), str(entry["version"])) for entry in raw]
           duplicates = sorted({key for key in keys if keys.count(key) > 1})
           assert not duplicates, f"duplicate entries: {duplicates}"
