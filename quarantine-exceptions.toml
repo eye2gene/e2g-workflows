@@ -15,25 +15,9 @@ quarantine-days = 7
 no-quarantine = ["process-dcm", "pyescan", "pseudonymise-files"]
 
 [[exception]]
-package = "setuptools"
-version = "84.1.0"
-cutoff = "2026-10-20T00:00:00Z"
-advisory = "GHSA-xmj3-9gf7-h52w"
-added = "2026-10-26"
-by = "alanwilter"
-
-[[exception]]
-package = "certifi"
-version = "2026.10.19"
-cutoff = "2026-10-21T00:00:00Z"
-advisory = "PYSEC-2026-4320, GHSA-6q48-6c7w-9gw2"
-added = "2026-10-26"
-by = "alanwilter"
-
-[[exception]]
-package = "virtualenv"
-version = "21.14.13"
-cutoff = "2026-10-23T00:00:00Z"
-advisory = "GHSA-cx6f-vjhg-g3cc"
-added = "2026-10-26"
+package = "pyasn1"
+version = "0.6.5"
+cutoff = "2026-10-27T06:33:49Z"
+advisory = "GHSA-2qm8-x737-gmw5, GHSA-9m75-vc3g-4x39, GHSA-fm9c-5rcf-2q5p, GHSA-mm57-4v3p-rchx"
+added = "2026-10-31"
 by = "alanwilter"
