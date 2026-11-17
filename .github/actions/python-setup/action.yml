@@ -21,9 +21,15 @@ inputs:
 runs:
   using: composite
   steps:
+    # The cache keeps only the wheels uv built itself (`uv cache prune --ci`). setup-uv stopped pruning by default
+    # in July 2026, and a project with torch then saved 3.4 GB per job: restoring it took longer than downloading
+    # the wheels, and on 17 Nov a job that restored it downloaded torch again all the same and ran out of disk. The
+    # suffix keeps the caches saved before the pruning from being restored.
     - uses: astral-sh/setup-uv@main
       with:
         python-version: ${{ inputs.python-version }}
+        prune-cache: true
+        cache-suffix: pruned
 
     # Every `uv` command of the job, from the sync below on, refuses a uv.lock that is not up to date instead of
     # rewriting it: the committed lock is what CI tests. python-ci.yml sets the same for its own jobs.
