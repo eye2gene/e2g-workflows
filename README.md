@@ -13,7 +13,7 @@ A complete CI pipeline for Python projects using [uv](https://docs.astral.sh/uv/
 **Jobs:**
 
 | Job | Description |
-|---|---|
+| --- | --- |
 | `ci` | Runs `just ci` — format check, lint, type-check, audit |
 | `license-check` | Runs `just license-check` — checks dependency licences (non-blocking) |
 | `test` | Runs `just ci-setup` when the justfile defines it, then `just test` (or `test-recipe`), across a Python version matrix |
@@ -22,7 +22,7 @@ A complete CI pipeline for Python projects using [uv](https://docs.astral.sh/uv/
 **Inputs:**
 
 | Input | Type | Default | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `python-versions` | string | `'["3.12", "3.13", "3.14"]'` | JSON array of Python versions to test |
 | `license-check-ignore` | string | `"certifi cookiecutter"` | Space-separated packages to skip in licence check |
 | `submodules` | string | `"false"` | Check the submodules out in every job: `"true"` or `"recursive"`; a private one needs the `GH_TOKEN` secret |
@@ -34,14 +34,14 @@ A complete CI pipeline for Python projects using [uv](https://docs.astral.sh/uv/
 **Secrets:**
 
 | Secret | Description |
-|---|---|
+| --- | --- |
 | `GH_TOKEN` | Optional. A token that can read the project's private submodules (the checkout uses it instead of `github.token`) and other private repositories; also in the environment of `just ci-setup`, e.g. for `gh release download`. Pass it with `secrets: inherit` or `secrets: { GH_TOKEN: ${{ secrets.GH_TOKEN }} }`. |
 
 **Requirements for calling repos:**
 
 The workflow delegates all commands to `just`, so the calling repo must have a `justfile` with these recipes:
 
-```
+```text
 just ci            # ruff format --check, ruff check, ty check, uv audit
 just license-check # licensecheck --format markdown --show-only-failing
 just test          # pytest with coverage
@@ -70,7 +70,7 @@ on:
 
 jobs:
   ci:
-    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@v1
 ```
 
 **Customising inputs:**
@@ -78,7 +78,7 @@ jobs:
 ```yaml
 jobs:
   ci:
-    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@v1
     with:
       python-versions: '["3.11", "3.12", "3.13", "3.14"]'
       license-check-ignore: "certifi requests"
@@ -95,14 +95,14 @@ The workflow is the base every project inherits, in the sense of a GitLab `inclu
    ```yaml
    jobs:
      ci:
-       uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+       uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@v1
        secrets: inherit
 
      my-check:
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v7
-         - uses: eye2Gene/e2g-workflows/.github/actions/python-setup@main
+         - uses: eye2Gene/e2g-workflows/.github/actions/python-setup@v1
            with:
              sync-args: --all-extras   # optional; `python-version` and `sync: "false"` too
          - run: uv run just my-check
@@ -115,7 +115,7 @@ A project whose tests need a private binary, system packages, LFS data and a red
 ```yaml
 jobs:
   ci:
-    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@v1
     with:
       python-versions: '["3.11", "3.12", "3.13", "3.14"]'
       lfs: true
@@ -140,7 +140,7 @@ ci-setup:
 # .github/workflows/release.yml
 jobs:
   ci:
-    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@main
+    uses: eye2Gene/e2g-workflows/.github/workflows/python-ci.yml@v1
 
   release:
     needs: [ci]
@@ -155,7 +155,7 @@ Every Eye2Gene Python project locks its dependencies with a 7-day quarantine (`e
 
 - **Adding an entry:** in any project generated from [e2g-pypkg](https://github.com/eye2Gene/e2g-pypkg), run `just allow <package>` (or `just allow <package> <version>`). It takes the fix version from `uv audit`, computes the cutoff from the release's upload time on PyPI, opens a pull request here and prints its URL. Review and merge it, then run `just up` in the project. If this repository has auto-merge enabled (Settings → General → Pull Requests), `just allow` merges the pull request automatically instead: at once, or, when a ruleset on `main` requires the `check` status from `list-check.yml`, as soon as that check passes. Editing the file by hand is fine too, through a pull request.
 - **Taking an entry:** `just up` in any project writes the list's active entries to the user-level uv configuration (`~/.config/uv/uv.toml`) before locking, so a fix listed by one person reaches every project on its next `just up`.
-- **In CI:** `python-ci.yml` (through its `python-setup` action, which a project's own jobs can use too) reads the exceptions uv recorded in the project's `uv.lock`, configures uv to accept them so `uv sync` under `UV_LOCKED=1` passes, and fails the job when one of them lets a package in, today, that this list does not allow. Active exceptions appear as notices on the run; expired ones, listed here or not, as warnings until the project's next `just up`, since by then they only pin their package.
+- **In CI:** `python-ci.yml` (through its `python-setup` action, which a project's own jobs can use too) reads the exceptions uv recorded in the project's `uv.lock`, configures uv to accept them so `uv sync` under `UV_LOCKED=1` passes, and fails the job when one of them lets a package in, today, that this list does not allow. It reads the list from `main`, whatever version of the workflow the project calls, so an entry reaches CI as soon as its pull request merges, with no release. Active exceptions appear as notices on the run; expired ones, listed here or not, as warnings until the project's next `just up`, since by then they only pin their package.
 - **`[policy] no-quarantine`:** the packages Eye2Gene releases itself (`process-dcm`, `pyescan`, `pseudonymise-files`), never quarantined anywhere.
 
 An entry expires on its own, 7 days after its cutoff, when the 7-day rule admits the same releases. The next `just allow` prunes expired entries from the file; the pull requests and the git history are the record of what was let in early, by whom and for which advisory. A project that still sets `exclude-newer-package` in its own `pyproject.toml` should drop it, since the list replaces it; CI accepts such entries only while they match the list.
@@ -166,7 +166,7 @@ To add a workflow for another language or toolchain:
 
 1. Create `.github/workflows/<language>-ci.yml` with `on: workflow_call`
 2. Document it in this README following the same format
-3. Open a PR — once merged to `main`, it's immediately available to all consumers
+3. Open a PR titled `feat: ...`: once it merges, the next release makes it available at `@v1`
 
 Planned additions:
 
@@ -175,9 +175,13 @@ Planned additions:
 
 ## Versioning
 
-All workflows are consumed at `@main`. This means consumers always get the latest version automatically — no version pinning needed.
+Projects call the workflow and the action at the major tag, `@v1`. Every merge to `main` that brings a `feat`, `fix` or `perf` commit is released by [`release.yml`](.github/workflows/release.yml): python-semantic-release tags it `vX.Y.Z` and publishes a GitHub release whose notes list those commits, and `v1` moves to it. Projects at `@v1` get every release of the 1.x line on their next run, without a pull request of their own.
 
-If a breaking change is ever required (e.g., a `justfile` recipe is renamed), it will be communicated via the [e2g-pypkg](https://github.com/eye2Gene/e2g-pypkg) template update mechanism (cruft).
+The [releases page](https://github.com/eye2Gene/e2g-workflows/releases) is the changelog. Nothing is committed back to `main`: a `CHANGELOG.md` would need a token that can push past the `main` ruleset, and this public repository keeps no secrets (see "Access").
+
+A change that makes an existing caller fail or behave differently is breaking: removing or renaming an input, a secret or a hook recipe, making an optional input required, or changing a default that callers rely on. Its commit carries `!` (`feat!: ...`) or a `BREAKING CHANGE:` footer, which releases `v2.0.0` and leaves `v1` where it is. The [e2g-pypkg](https://github.com/eye2Gene/e2g-pypkg) template then moves to `@v2`, and each project takes it with its next `cruft update`.
+
+`quarantine-exceptions.toml` is not versioned: CI reads it from `main` (see "Quarantine exceptions"), and `chore(quarantine)` commits release nothing.
 
 ## Access
 

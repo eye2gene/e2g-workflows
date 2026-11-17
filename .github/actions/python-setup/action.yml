@@ -37,13 +37,24 @@ runs:
       shell: bash
       run: echo "UV_LOCKED=1" >> "$GITHUB_ENV"
 
-    # The script and the list come with this action's checkout, at the ref it was called with: GITHUB_ACTION_PATH
-    # is .github/actions/python-setup inside it
+    # The list is data, not code: it is read from main whatever version of this action runs, as `just up` reads it,
+    # so a fix that `just allow` lets in reaches CI when its pull request merges, not with the next release. The
+    # contents API, unlike raw.githubusercontent.com, serves no copy cached from before that merge.
+    - name: Fetch the quarantine list from main
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: >-
+        gh api "repos/eye2Gene/e2g-workflows/contents/quarantine-exceptions.toml?ref=main"
+        -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/quarantine-exceptions.toml"
+
+    # The script comes with this action's checkout, at the ref it was called with: GITHUB_ACTION_PATH is
+    # .github/actions/python-setup inside it
     - name: Allow the quarantine exceptions of uv.lock
       shell: bash
       run: >-
         python3 "$GITHUB_ACTION_PATH/../../../scripts/uv_quarantine_ci.py"
-        uv.lock "$GITHUB_ACTION_PATH/../../../quarantine-exceptions.toml"
+        uv.lock "$RUNNER_TEMP/quarantine-exceptions.toml"
 
     - name: uv sync
       if: inputs.sync == 'true'

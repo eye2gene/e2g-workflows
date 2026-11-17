@@ -1,0 +1,48 @@
+name: Release
+
+# Releases every push to main that brings a feat, fix or perf commit, or a breaking change: python-semantic-release
+# tags it vX.Y.Z and publishes a GitHub release whose notes list those commits, then the major tag vX moves to it,
+# so projects calling @vX get it on their next run. Nothing is committed: the job's own token can push tags and
+# publish releases, and this public repository keeps no secrets that could push past the main ruleset. The releases
+# page is the changelog. See README.md, "Versioning", and releaserc.toml.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write  # push the tags, publish the release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the commits and tags since the last release
+          persist-credentials: false  # semantic-release and the last step push with the token they are given
+
+      - name: Tag and publish the release
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          config_file: releaserc.toml
+          commit: "false"
+          changelog: "false"
+          build: "false"
+
+      # v1.4.2 moves v1, as actions/checkout@v7 does; a major release starts its own tag and leaves the last one
+      - name: Move the major tag to the release
+        if: steps.release.outputs.released == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          major="${TAG%%.*}"
+          git tag --force "$major" "$TAG^{commit}"
+          git push --force "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/$major"

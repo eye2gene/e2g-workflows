@@ -1,0 +1,14 @@
+# python-semantic-release, run by .github/workflows/release.yml. No file carries a version: a release is the tag
+# vX.Y.Z, its GitHub release with the notes, and the major tag vX moved to it. See README.md, "Versioning".
+[semantic_release]
+tag_format = "v{version}"
+commit_parser = "conventional"
+allow_zero_version = false  # the first release is v1.0.0: projects call @v1
+
+[semantic_release.branches.main]
+match = "main"
+prerelease = false
+
+[semantic_release.changelog]
+# The merge commits of pull requests repeat the title of the commit they merge
+exclude_commit_patterns = ["^Merge (pull request|branch) "]
