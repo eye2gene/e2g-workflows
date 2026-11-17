@@ -55,7 +55,8 @@ on:
 # ([options.exclude-newer-package]) are not also in uv's configuration. Each job fetches this repository at the
 # commit of this workflow (`job.workflow_sha`: the reusable workflow's own commit; the `github` context is the
 # caller's) and runs its python-setup action, which lets uv accept the lock's own exceptions and fails the job when
-# one of them is not in quarantine-exceptions.toml. See README.md, "Quarantine exceptions".
+# one of them is not in quarantine-exceptions.toml, read from main whatever version of this workflow runs. See
+# README.md, "Quarantine exceptions".
 
 jobs:
   ci:
