@@ -12,3 +12,7 @@ prerelease = false
 [semantic_release.changelog]
 # The merge commits of pull requests repeat the title of the commit they merge
 exclude_commit_patterns = ["^Merge (pull request|branch) "]
+
+[semantic_release.changelog.default_templates]
+# The releases page is the changelog: v1.0.0 lists the history before it instead of "Initial Release"
+mask_initial_release = false
